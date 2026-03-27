@@ -4,16 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>客户分类小助手</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 900px; width: 100%; margin: 0 auto; padding: 40px; }
         h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
         .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
-        .upload-area { border: 2px dashed #ccc; border-radius: 10px; padding: 30px; text-align: center; margin-bottom: 20px; cursor: pointer; transition: border-color 0.3s; }
-        .upload-area:hover { border-color: #667eea; }
-        .upload-area.dragover { border-color: #667eea; background: #f0f4ff; }
         .manual-input { margin-bottom: 20px; }
         textarea { width: 100%; padding: 15px; border: 2px solid #eee; border-radius: 10px; font-size: 14px; resize: vertical; min-height: 80px; }
         textarea:focus { outline: none; border-color: #667eea; }
@@ -47,16 +43,12 @@
 <body>
     <div class="container">
         <h1>🏢 客户分类小助手</h1>
-        <p class="subtitle">支持 Excel 导入或手动输入，自动分类：国防/科研/央国企/泛政府/其他</p>
-        <div class="info-box">📋 Excel 格式要求：第一行表头，客户名称在第一列（如"A列"）。支持 .xlsx 和 .xls 格式。</div>
-        <div class="upload-area" id="uploadArea"><p>📁 点击或拖拽 Excel 文件到此处上传</p><input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none"></div>
-<div class="manual-input"><p style="margin-bottom: 10px; color: #666;">或手动输入客户名称（每行一个）：</p><textarea id="manualInput" placeholder="中国石油
-清华大学
-北京市政府
-..."></textarea></div>
-<div class="btn-group"><button onclick="processInput()" id="classifyBtn">开始分类</button><button onclick="downloadResult()" class="secondary" id="downloadBtn" disabled>导出结果</button><button onclick="clearAll()" class="secondary">清空</button></div>
-<div class="stats hidden" id="stats"></div>
-<div id="resultContainer" class="hidden"><h3 style="margin-bottom: 15px;">分类结果</h3><table class="result-table" id="resultTable"><thead><tr><th>序号</th><th>客户名称</th><th>一级分类</th><th>二级分类</th><th>匹配关键词</th></tr></thead><tbody id="resultBody"></tbody></table></div>
+        <p class="subtitle">支持手动输入，自动分类：国防/科研/央国企/泛政府/其他</p>
+        <div class="info-box">📋 输入客户名称（每行一个），点击开始分类即可。</div>
+        <div class="manual-input"><p style="margin-bottom: 10px; color: #666;">输入客户名称（每行一个）：</p><textarea id="manualInput" placeholder="中国石油&#10;清华大学&#10;北京市政府"></textarea></div>
+        <div class="btn-group"><button onclick="processInput()">开始分类</button><button onclick="downloadResult()" class="secondary" id="downloadBtn" disabled>导出CSV</button><button onclick="clearAll()" class="secondary">清空</button></div>
+        <div class="stats hidden" id="stats"></div>
+<div id="resultContainer" class="hidden"><h3 style="margin-bottom: 15px;">分类结果</h3><table class="result-table"><thead><tr><th>序号</th><th>客户名称</th><th>一级分类</th><th>二级分类</th><th>匹配关键词</th></tr></thead><tbody id="resultBody"></tbody></table></div>
 <div class="categories"><h3>支持的分类</h3><div class="category-grid"><div class="category-item">🛡️ 国防客户</div><div class="category-item">🔬 科研客户</div><div class="category-item">🏛️ 央国企客户</div><div class="category-item">🏢 泛政府客户</div><div class="category-item">📦 其他</div></div></div>
 </div>
 <script>
@@ -88,3 +80,12 @@ return { name, category, subcategory, keywords: matchedKeywords };
 function processInput() {
 const manualText = document.getElementById('manualInput').value;
 let names = [];
+if (manualText.trim()) { names = manualText.split('\n').map(s => s.trim()).filter(s => s); }
+if (names.length === 0) { alert('请输入客户名称'); return; }
+classificationResult = names.map((name, index) => { const result = classify(name); return { ...result, index: index + 1 }; });
+displayResult();
+}
+function displayResult() {
+const tbody = document.getElementById('resultBody');
+tbody.innerHTML = '';
+const stats = {};
