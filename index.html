@@ -4,16 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>客户分类小助手</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 900px; width: 100%; margin: 0 auto; padding: 40px; }
         h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
         .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .upload-area { border: 2px dashed #ccc; border-radius: 10px; padding: 30px; text-align: center; margin-bottom: 20px; cursor: pointer; }
+        .upload-area:hover { border-color: #667eea; }
         .manual-input { margin-bottom: 20px; }
         textarea { width: 100%; padding: 15px; border: 2px solid #eee; border-radius: 10px; font-size: 14px; resize: vertical; min-height: 80px; }
         textarea:focus { outline: none; border-color: #667eea; }
-        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         button { padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; }
         button:hover { opacity: 0.9; }
         button.secondary { background: #6c757d; }
@@ -43,49 +46,103 @@
 <body>
     <div class="container">
         <h1>🏢 客户分类小助手</h1>
-        <p class="subtitle">支持手动输入，自动分类：国防/科研/央国企/泛政府/其他</p>
-        <div class="info-box">📋 输入客户名称（每行一个），点击开始分类即可。</div>
-        <div class="manual-input"><p style="margin-bottom: 10px; color: #666;">输入客户名称（每行一个）：</p><textarea id="manualInput" placeholder="中国石油&#10;清华大学&#10;北京市政府"></textarea></div>
-        <div class="btn-group"><button onclick="processInput()">开始分类</button><button onclick="downloadResult()" class="secondary" id="downloadBtn" disabled>导出CSV</button><button onclick="clearAll()" class="secondary">清空</button></div>
-        <div class="stats hidden" id="stats"></div>
+        <p class="subtitle">支持 Excel 导入或手动输入，自动分类：国防/科研/央国企/泛政府/其他</p>
+        <div class="info-box">📋 Excel 格式：客户名称在第一列，支持 .xlsx 和 .xls</div>
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <p>📁 点击选择 Excel 文件上传</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(this.files[0])" style="display:none">
+<div class="manual-input"><p style="margin-bottom: 10px; color: #666;">或手动输入客户名称（每行一个）：</p><textarea id="manualInput" placeholder="中国石油
+清华大学
+北京市政府"></textarea></div>
+<div class="btn-group"><button onclick="processInput()">开始分类</button><button onclick="downloadResult()" class="secondary" id="downloadBtn" disabled>导出CSV</button><button onclick="clearAll()" class="secondary">清空</button></div>
+<div class="stats hidden" id="stats"></div>
 <div id="resultContainer" class="hidden"><h3 style="margin-bottom: 15px;">分类结果</h3><table class="result-table"><thead><tr><th>序号</th><th>客户名称</th><th>一级分类</th><th>二级分类</th><th>匹配关键词</th></tr></thead><tbody id="resultBody"></tbody></table></div>
 <div class="categories"><h3>支持的分类</h3><div class="category-grid"><div class="category-item">🛡️ 国防客户</div><div class="category-item">🔬 科研客户</div><div class="category-item">🏛️ 央国企客户</div><div class="category-item">🏢 泛政府客户</div><div class="category-item">📦 其他</div></div></div>
 </div>
 <script>
 const rules = {
-"国防客户": { "中央军委及直属机构": ["中央军委", "联合参谋部", "政治工作部", "后勤保障部", "装备发展部", "训练管理部", "国防动员部"], "各兵种机关及直属单位": ["陆军", "海军", "空军", "火箭军", "战略支援部队", "装备研究院", "装备部"], "军事院校": ["国防大学", "军事科学院", "国防科技大学", "陆军指挥学院", "海军指挥学院", "空军指挥学院"], "军队直属保障/维修企业": ["长丰实业", "5706工厂"], "国防科工局": ["国防科工局"], "十大军工集团": ["中国核工业集团", "中核集团", "中国航天科技集团", "航天科技", "中国航天科工集团", "航天科工", "中国航空工业集团", "中航工业", "航空工业", "中国航空发动机集团", "中国航发", "中国船舶集团", "中国船舶", "中国兵器工业集团", "兵器工业", "中国兵器装备集团", "兵器装备", "中国电子科技集团", "中国电科", "电科", "中国电子信息产业集团"] },
-"科研客户": { "国家实验室": ["中关村实验室", "昌平实验室", "张江实验室", "广州实验室", "苏州实验室"], "高等院校": ["大学", "理工大学", "航空航天大学", "哈尔滨工业大学", "哈尔滨工程大学", "西北工业大学", "南京理工大学", "南京航空航天大学", "清华大学", "北京大学", "复旦大学", "上海交通大学", "浙江大学", "中国人民大学", "北京航空航天大学", "北京理工大学", "华中科技大学", "电子科技大学", "西安交通大学", "同济大学", "天津大学", "东南大学"], "科研院所": ["中国科学院", "中国社会科学院", "北京市科学技术研究院", "上海市科学院", "中国测绘科学研究院", "中国林业科学研究院", "科研院所", "科学研究院", "研究院"], "医院": ["医院", "协和医院", "301医院", "同仁医院", "积水潭医院", "阜外医院", "安贞医院"] },
-"央国企客户": { "央企": ["国家电网", "中国石油", "中国石化", "中国海油", "中国建筑", "中国中铁", "中国铁建", "中国中车", "中国电建", "中国能建", "中国电信", "中国联通", "中国移动", "中国电子", "招商局集团", "华润集团", "中国国新", "中化集团", "中国化工", "中国中化", "国药集团", "中国建材", "中国有色", "中国黄金", "中国商飞", "中国航发", "中国商保", "中国信达", "中国华融", "中国长城", "中国东方", "中国太平洋"], "金融类央国企": ["中国工商银行", "中国农业银行", "中国银行", "中国建设银行", "交通银行", "中国人民银行", "中国农业发展银行", "中国进出口银行", "国家开发银行", "中国人寿", "中国人民保险", "中国太平保险", "中国出口信用保险", "中国信保", "银行", "保险", "资产管理", "信托", "证券", "期货"], "地方国企": ["高速集团", "机场集团", "钢铁集团", "能源集团", "煤业集团", "城投", "交投", "能投", "国投", "建投", "水投", "文旅集团", "水务集团", "燃气集团", "电力集团", "电信集团"] },
-"泛政府客户": { "各级党政机关": ["国务院", "中共中央", "省委", "市委", "县委", "乡镇政府", "人民政府", "公安局", "教育局", "卫生局", "财政局", "交通局", "建设局", "规划局", "城管局", "环保局", "市场监管局", "税务局", "人社局", "民政局", "司法局"], "事业单位": ["事业单位", "博物院", "博物馆", "图书馆", "文化馆", "青少年宫", "文化宫", "工人文化宫", "党校", "行政学院"], "国资平台公司": ["城投公司", "交投公司", "能投公司", "国投公司", "建投公司", "水投公司", "文旅公司"] }
+"国防客户": { "中央军委及直属机构": ["中央军委", "联合参谋部", "政治工作部", "后勤保障部", "装备发展部"], "各兵种机关": ["陆军", "海军", "空军", "火箭军", "战略支援部队"], "十大军工集团": ["中国核工业集团", "中核集团", "中国航天科技集团", "中国航天科工集团", "中国航空工业集团", "中国船舶集团", "中国兵器工业集团", "中国电子科技集团", "中国电科"] },
+"科研客户": { "高等院校": ["大学", "清华大学", "北京大学", "哈尔滨工业大学", "理工大学", "航空航天大学"], "科研院所": ["中国科学院", "研究院", "科研院所"], "医院": ["医院", "协和医院", "301医院"] },
+"央国企客户": { "央企": ["国家电网", "中国石油", "中国石化", "中国移动", "中国电信", "中国建筑", "中国中铁"], "金融类": ["工商银行", "农业银行", "中国银行", "建设银行", "银行", "保险"], "地方国企": ["城投", "交投", "能投", "国投", "高速集团", "机场集团"] },
+"泛政府客户": { "党政机关": ["人民政府", "市委", "省委", "县政府", "市政府", "省政府", "公安局", "教育局", "财政局"], "事业单位": ["博物院", "博物馆", "图书馆", "研究院"] }
 };
 let classificationResult = [];
 function classify(name) {
 if (!name || !name.trim()) return null;
 name = name.trim();
-let found = false;
 let category = "其他";
 let subcategory = "一般企业";
 let matchedKeywords = [];
 for (const [cat, subcats] of Object.entries(rules)) {
 for (const [sub, keywords] of Object.entries(subcats)) {
 for (const kw of keywords) {
-if (name.includes(kw)) { category = cat; subcategory = sub; matchedKeywords.push(kw); found = true; break; }
+if (name.includes(kw)) { category = cat; subcategory = sub; matchedKeywords.push(kw); break; }
 }
-if (found) break;
+if (matchedKeywords.length > 0) break;
 }
-if (found) break;
+if (matchedKeywords.length > 0) break;
 }
 return { name, category, subcategory, keywords: matchedKeywords };
 }
+function handleFile(file) {
+if (!file) return;
+const reader = new FileReader();
+reader.onload = function(e) {
+try {
+const data = new Uint8Array(e.target.result);
+const workbook = XLSX.read(data, { type: 'array' });
+const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+const names = jsonData.map(row => row[0]).filter(n => n && typeof n === 'string');
+if (names.length === 0) { alert('未找到客户名称'); return; }
+classificationResult = names.map((name, i) => ({ ...classify(name), index: i + 1 }));
+displayResult();
+} catch (err) { alert('文件解析失败'); }
+};
+reader.readAsArrayBuffer(file);
+}
 function processInput() {
-const manualText = document.getElementById('manualInput').value;
-let names = [];
-if (manualText.trim()) { names = manualText.split('\n').map(s => s.trim()).filter(s => s); }
+const text = document.getElementById('manualInput').value;
+const names = text.split('\n').map(s => s.trim()).filter(s => s);
 if (names.length === 0) { alert('请输入客户名称'); return; }
-classificationResult = names.map((name, index) => { const result = classify(name); return { ...result, index: index + 1 }; });
+classificationResult = names.map((name, i) => ({ ...classify(name), index: i + 1 }));
 displayResult();
 }
 function displayResult() {
 const tbody = document.getElementById('resultBody');
 tbody.innerHTML = '';
 const stats = {};
+classificationResult.forEach(r => { stats[r.category] = (stats[r.category] || 0) + 1; });
+document.getElementById('stats').innerHTML = Object.entries(stats).map(([cat, c]) => <div class="stat-item"><div class="stat-number">${c}</div><div class="stat-label">${cat}</div></div>).join('');
+document.getElementById('stats').classList.remove('hidden');
+classificationResult.forEach(r => {
+const row = document.createElement('tr');
+row.innerHTML = <td>${r.index}</td><td>${r.name}</td><td><span class="category-tag category-${r.category.replace('客户','')}">${r.category}</span></td><td>${r.subcategory}</td><td>${r.keywords.join(', ') || '-'}</td>;
+tbody.appendChild(row);
+});
+document.getElementById('resultContainer').classList.remove('hidden');
+document.getElementById('downloadBtn').disabled = false;
+}
+function downloadResult() {
+if (classificationResult.length === 0) return;
+let csv = '序号,客户名称,一级分类,二级分类,匹配关键词\n';
+classificationResult.forEach(r => csv += ${r.index},"${r.name}","${r.category}","${r.subcategory}","${r.keywords.join(', ')}"\n);
+const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+const a = document.createElement('a');
+a.href = URL.createObjectURL(blob);
+a.download = '客户分类结果.csv';
+a.click();
+}
+function clearAll() {
+document.getElementById('manualInput').value = '';
+document.getElementById('fileInput').value = '';
+classificationResult = [];
+document.getElementById('resultBody').innerHTML = '';
+document.getElementById('stats').classList.add('hidden');
+document.getElementById('resultContainer').classList.add('hidden');
+document.getElementById('downloadBtn').disabled = true;
+}
+</script>
+</body>
+</html>
